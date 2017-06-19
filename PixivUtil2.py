@@ -1,4 +1,4 @@
-﻿#!/usr/bin/python
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 # pylint: disable=I0011, C, C0302
 
@@ -29,8 +29,9 @@ import PixivConfig
 import PixivDBManager
 import PixivHelper
 from PixivModel import PixivArtist, PixivImage, PixivListItem, PixivBookmark, PixivTags
-from PixivModel import PixivNewIllustBookmark, PixivGroup
+from PixivModel import PixivNewIllustBookmark, PixivGroup, PixivRank
 from PixivException import PixivException
+from datetime import timedelta
 import PixivBrowserFactory
 
 from optparse import OptionParser
@@ -1165,6 +1166,54 @@ def process_from_group(mode, group_id, limit=0, process_external=True):
         __log__.exception('Error at process_from_group(): ' + str(sys.exc_info()))
         raise
 
+def process_from_rank(mode, rank_type, start_date, end_date, limit):		
+    try:		
+        print "Download by Rank"		
+        if limit != 0:		
+            print "Limit: {0}".format(limit)		
+        max_id = 0		
+        image_count = 0		
+        flag = True		
+        date = start_date		
+        print "Importing Rank page..."		
+        totalList = list()		
+        image_count = 1		
+        totalList.extend(get_image_rank(rank_type, start_date, end_date))		
+        PixivHelper.printAndLog('info', "Found " + str(len(totalList)) + " image(s).")		
+        for item in totalList:		
+            print "Image #" + str(image_count)		
+            process_image(mode, artist=None, image_id=item)		
+            image_count = image_count + 1		
+        print "Done.\n"		
+    except KeyboardInterrupt:		
+        raise		
+    except:		
+        print 'Error at process_image_rank():', sys.exc_info()		
+        __log__.exception('Error at process_image_rank(): ' + str(sys.exc_info()))		
+        raise		
+def get_image_rank(rank_type, start_date, end_date):		
+    total_list = list()		
+    start_date = datetime.datetime.strptime(start_date,'%Y-%m-%d')		
+    end_date = datetime.datetime.strptime(end_date,'%Y-%m-%d')		
+    now_date = start_date		
+    while True:		
+        		
+        url = 'https://www.pixiv.net/ranking.php?mode={0}&date={1}'.format(rank_type, now_date.strftime("%Y%m%d"))		
+        PixivHelper.printAndLog('info', "Source URL: " + url)		
+        page = __br__.open(url)		
+        parse_page = BeautifulSoup(page.read())		
+        l = PixivRank.parseImageRank(parse_page)		
+        total_list.extend(l)		
+        if now_date == end_date:		
+            print "End"		
+            break		
+        else:		
+            print " found " + str(len(l)) + " images."		
+        now_date = now_date + timedelta(days=1)		
+        		
+        parse_page.decompose()		
+        del parse_page		
+    return total_list
 
 def header():
     print 'PixivDownloader2 version', PixivConstant.PIXIVUTIL_VERSION
@@ -1279,6 +1328,7 @@ def menu():
     print '10. Download by Tag and Member Id'
     print '11. Download Member Bookmark'
     print '12. Download by Group Id'
+    print '13. Download by Ranking'   
     print '------------------------'
     print 'd. Manage database'
     print 'e. Export online bookmark'
@@ -1562,6 +1612,21 @@ def menu_download_by_group_id(mode, opisvalid, args):
 
     process_from_group(mode, group_id, limit, process_external)
 
+def menu_download_by_rank(mode, opisvalid, args):		
+    __log__.info('Rank download mode.')		
+    process_external = False		
+    limit = 0		
+    if opisvalid and len(args) > 0:		
+        rank_type = args[0]		
+        limit = int(args[1])		
+        start_date = args[2]		
+        end_date = args[3]      		
+    else:		
+        rank_type = raw_input("Rank Type(daily,weekly,monthly,male,female..): ")		
+        limit = int(raw_input("Limit(1~50, default:30)<NOT COMPLETED, forced 50>: ") or 30)		
+        (start_date, end_date) = get_start_and_end_date()		
+        rankType = rank_type		
+    process_from_rank(mode, rank_type, start_date, end_date, limit)
 
 def menu_export_online_bookmark(mode, opisvalid, args):
     __log__.info('Export Bookmark mode.')
@@ -1620,6 +1685,7 @@ def setup_option_parser():
                             '10 - Download by Tag and Member Id                     ' +
                             '11 - Download images from Member Bookmark               ' +
                             '12 - Download images by Group Id                        ' +
+                            '13 - Download images by Ranking                         ' + 
                             'e - Export online bookmark                              ' +
                             'm - Export online user bookmark                         ' +
                             'd - Manage database')
@@ -1681,6 +1747,8 @@ def main_loop(ewd, mode, op_is_valid, selection, np_is_valid, args):
                 menu_download_by_member_bookmark(mode, op_is_valid, args)
             elif selection == '12':
                 menu_download_by_group_id(mode, op_is_valid, args)
+            elif selection == '13':		
+                menu_download_by_rank(mode, op_is_valid, args)
             elif selection == 'e':
                 menu_export_online_bookmark(mode, op_is_valid, args)
             elif selection == 'm':
@@ -1745,7 +1813,7 @@ def main():
     (options, args) = parser.parse_args()
 
     op = options.startaction
-    if op in ('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', 'd', 'e'):
+    if op in ('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', 'd', 'e'):
         op_is_valid = True
     elif op is None:
         op_is_valid = False

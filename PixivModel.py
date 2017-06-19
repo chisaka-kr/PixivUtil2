@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 # pylint: disable=I0011, C, C0302
 import os
 import re
@@ -1094,6 +1094,24 @@ class PixivGroup:
         string = string + " " + shortened
         return string
 
+class PixivRank:		
+    '''Class for parsing Ranking'''		
+    __re_imageDIVItemsClass = re.compile(r"ranking-image-item")		
+    @staticmethod		
+    def parseImageRank(page):		
+        imageList = list()		
+        temp = page.find('div', attrs={'class': 'ranking-items-container'})		
+        temp = temp.findAll('a')		
+        if temp is None or len(temp) == 0:		
+            return imageList		
+        for item in temp:		
+            href = re.search(r'member_illust.php?.*illust_id=(\d+)', str(item))		
+            if href is not None:		
+                href = href.group(1)		
+                if not int(href) in imageList:		
+                    imageList.append(int(href))		
+        return imageList		
+PixivTagsItem = collections.namedtuple('PixivTagsItem', ['imageId', 'bookmarkCount', 'imageResponse'])
 
 class SharedParser:
     @staticmethod
