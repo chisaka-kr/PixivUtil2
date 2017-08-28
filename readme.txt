@@ -383,11 +383,11 @@ useBlacklistMembers ==> Skip image by member id.
 ===============================================================================
 Available for filenameFormat, filenameMangaFormat, and avatarNameFormat:
 -> %member_token%
-   Member token, doesn't change.
+   Member token, might change.
 -> %member_id%
    Member id, in number.
 -> %artist%
-   Artist name, may change.
+   Artist name, might change too.
 -> %urlFilename%
    The actual filename stored in server without the file extensions.   
 -> %date%
@@ -502,9 +502,9 @@ http://www.pixiv.net/member_illust.php?id=123456
 = tags.txt Format                                                               =
 =================================================================================
 - This file will be used as source for Download from tags list (7)
-- Separate tags with space.
+- Separate tags with space, ensure to set Use Wildcard to 'y'.
 - Each line will be treated as one search.
-- Save the files with UTF-8 encoding
+- Save the files with UTF-8 encoding.
 
 =================================================================================
 = suppress_tags.txt Format                                                      =

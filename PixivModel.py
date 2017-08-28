@@ -66,12 +66,14 @@ class PixivArtist:
 
     def ParseInfo(self, page, fromImage=False, bookmark=False):
         avatarBox = page.find(attrs={'class': '_unit profile-unit'})
+        self.artistToken = self.ParseToken(page, fromImage)
+
         if avatarBox is not None:
             temp = str(avatarBox.find('a')['href'])
             self.artistId = int(re.search(r'id=(\d+)', temp).group(1))
 
             self.artistAvatar = str(page.find('img', attrs={'class': 'user-image'})['src'])
-            self.artistToken = self.ParseToken(page, fromImage)
+
             try:
                 h1 = page.find('h1', attrs={'class': 'user'})
                 if h1 is not None:
@@ -82,13 +84,26 @@ class PixivArtist:
                         self.artistName = unicode(avatar_m[0]["title"])
             except:
                 self.artistName = self.artistToken  # use the token.
+            return
         else:
-            self.artistAvatar = "no_profile"
-            self.artistToken = "self"
-            self.artistName = "self"
             # Issue #236
-            title = page.find("title").text
-            PixivHelper.dumpHtml("Dump for {0} UnknownProfile.html".format(title), page)
+            avatarBox = page.find(attrs={'class': '_user-profile-card'})
+            if avatarBox is not None:
+                temp = avatarBox.find('a')
+                self.artistId = int(re.search(r'id=(\d+)', temp['href']).group(1))
+                self.artistName = unicode(temp['title'])
+                self.artistAvatar = avatarBox.find('a')['style'].replace("background-image: url('", "").replace("');", "")
+            return
+
+        # Issue #236
+        # cannot parse information
+        self.artistAvatar = "no_profile"
+        self.artistName = "self"
+        title = page.find("title").text
+        filename = u"Dump for {0} UnknownProfile for {1}.html".format(title, self.artistToken)
+        PixivHelper.printAndLog("error", u"Cannot parse artist info, dumping to {0}".format(filename))
+        PixivHelper.printAndLog("error", u"{0}".format(page))
+        PixivHelper.dumpHtml(filename, page)
 
     def ParseToken(self, page, fromImage=False):
         try:
@@ -203,6 +218,7 @@ class PixivImage:
     ugoira_data = ""
     dateFormat = None
     descriptionUrlList = []
+    __re_caption = re.compile("caption")
 
     def __init__(self, iid=0, page=None, parent=None, fromBookmark=False, bookmark_count=-1, image_response_count=-1,
                  dateFormat=None):
@@ -285,6 +301,7 @@ class PixivImage:
 
     def IsDeleted(self, page):
         errorMessages = ['該当イラストは削除されたか、存在しないイラストIDです。|該当作品は削除されたか、存在しない作品IDです。',
+                         'この作品は削除されました。',
                          'The following work is either deleted, or the ID does not exist.',
                          'This work was deleted.',
                          'Work has been deleted or the ID does not exist.']
@@ -357,7 +374,7 @@ class PixivImage:
                 self.imageTitle = tempTitle.string
                 break
 
-        descriptionPara = page.findAll("p", attrs={'class': 'caption'})
+        descriptionPara = page.findAll("p", attrs={'class': PixivImage.__re_caption})
         for tempCaption in descriptionPara:
             if tempCaption is None or tempCaption.text is None:
                 continue
@@ -921,39 +938,54 @@ class PixivTags:
         # ignore showcase and popular-introduction
         # ignore.extend(self.parseIgnoreSection(page, 'showcase'))
         # ignore.extend(self.parseIgnoreSection(page, 'popular-introduction'))
-        search_result = page.find('section', attrs={'class': 'column-search-result'})
-        # new parse for bookmark items
-        items = search_result.findAll('li', attrs={'class': self.__re_imageItemClass})
 
-        # possible bug related to #143
-        if len(items) == 0:
-            # showcase must be removed first
-            showcase = page.find("section", attrs={'class': 'showcase'})
-            showcase.extract()
-            search_result = page.find("ul", attrs={'class': '_image-items autopagerize_page_element'})
-            if search_result is None or len(search_result) == 0:
-                return self.itemList
+        # new format for tag list, fix issue #252
+        js_tags_item = page.find("div", attrs={"id": "js-mount-point-search-result-list"})
+        if js_tags_item is not None:
+            js = js_tags_item["data-items"]
+            items = json.loads(js)
+            for item in items:
+                image_id = item["illustId"]
+                bookmarkCount = item["bookmarkCount"]
+                imageResponse = item["responseCount"]
+                self.itemList.append(PixivTagsItem(int(image_id), int(bookmarkCount), int(imageResponse)))
+
+        else:
+            search_result = page.find('section', attrs={'class': 'column-search-result'})
+            # new parse for bookmark items
             items = search_result.findAll('li', attrs={'class': self.__re_imageItemClass})
 
-        for item in items:
-            if str(item).find('member_illust.php?') > -1:
-                image_id = self.__re_illust.findall(item.find('a')['href'])[0]
-                if not str(image_id).isdigit() or image_id in ignore:
-                    continue
+            # possible bug related to #143
+            if len(items) == 0:
+                # showcase must be removed first
+                showcase = page.find("section", attrs={'class': 'showcase'})
+                if showcase is not None:
+                    showcase.extract()
+                search_result = page.find("ul", attrs={'class': '_image-items autopagerize_page_element'})
+                if search_result is None or len(search_result) == 0:
+                    return self.itemList
+                items = search_result.findAll('li', attrs={'class': self.__re_imageItemClass})
 
-                bookmarkCount = 0
-                imageResponse = 0
-                countList = item.find('ul', attrs={'class': 'count-list'})
-                if countList is not None:
-                    countList = countList.findAll('li')
-                    if len(countList) > 0:
-                        for count in countList:
-                            temp = count.find('a')
-                            if 'bookmark-count' in temp['class']:
-                                bookmarkCount = temp.contents[1]
-                            elif 'image-response-count' in temp['class']:
-                                imageResponse = temp.contents[1]
-                self.itemList.append(PixivTagsItem(int(image_id), int(bookmarkCount), int(imageResponse)))
+            for item in items:
+                if str(item).find('member_illust.php?') > -1:
+                    image_id = self.__re_illust.findall(item.find('a')['href'])[0]
+                    if not str(image_id).isdigit() or image_id in ignore:
+                        continue
+
+                    bookmarkCount = 0
+                    imageResponse = 0
+                    countList = item.find('ul', attrs={'class': 'count-list'})
+                    if countList is not None:
+                        countList = countList.findAll('li')
+                        if len(countList) > 0:
+                            for count in countList:
+                                temp = count.find('a')
+                                if 'bookmark-count' in temp['class']:
+                                    bookmarkCount = temp.contents[1]
+                                elif 'image-response-count' in temp['class']:
+                                    imageResponse = temp.contents[1]
+                    self.itemList.append(PixivTagsItem(int(image_id), int(bookmarkCount), int(imageResponse)))
+
         self.checkLastPage(page)
         self.availableImages = SharedParser.parseCountBadge(page)
         return self.itemList
